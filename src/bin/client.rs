@@ -2,6 +2,7 @@ use std::{io, net::SocketAddr, sync::Arc};
 
 use quinn::{crypto::rustls::QuicClientConfig, Endpoint};
 use rustls::client::danger::{ServerCertVerified, ServerCertVerifier};
+use tokio::{fs::File, io::AsyncWriteExt};
 
 #[derive(Debug)]
 struct TrustOnFirstUseVerifier(Arc<rustls::crypto::CryptoProvider>);
@@ -102,12 +103,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .connect(server_addr, "hello.world.example")?
         .await?;
     let (mut w, mut r) = new_conn.open_bi().await?;
-    tokio::spawn(async move {
-        let mut stdout = tokio::io::stdout();
-        let _ = tokio::io::copy(&mut r, &mut stdout).await;
-    });
-    let mut stdin = tokio::io::stdin();
-    tokio::io::copy(&mut stdin, &mut w).await?;
+    // let mut stdout = tokio::io::stdout();
+    // let _ = tokio::io::copy(&mut r, &mut stdout).await;
+    w.write_all(b"hello").await?;
+    let mut file = File::create("copied.mp4").await.unwrap();
+    let mut buffer = vec![0u8; 16 * 1024];
+    while let Ok(Some(len)) = r.read(&mut buffer).await {
+        file.write_all(&buffer[..len]).await.unwrap();
+    }
+
+    // let mut stdin = tokio::io::stdin();
+    // tokio::io::copy(&mut stdin, &mut w).await?;
     w.finish()?;
     new_conn.close(0u32.into(), b"done");
     endpoint.wait_idle().await;

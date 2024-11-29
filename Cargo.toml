@@ -1,5 +1,5 @@
 [package]
-name = "test-quinn"
+name = "test-quinn-file-transfer"
 version = "0.1.0"
 edition = "2021"
 
