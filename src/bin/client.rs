@@ -2,8 +2,8 @@ use std::{io, net::SocketAddr, sync::Arc};
 
 use quinn::{crypto::rustls::QuicClientConfig, Endpoint};
 use rustls::client::danger::{ServerCertVerified, ServerCertVerifier};
-use test_quinn_file_transfer::{listener, send_udp_packet};
-use tokio::{fs::File, io::AsyncWriteExt, sync::watch};
+use test_quinn_file_transfer::send_udp_packet;
+use tokio::{fs::File, io::AsyncWriteExt};
 
 #[derive(Debug)]
 struct TrustOnFirstUseVerifier(Arc<rustls::crypto::CryptoProvider>);
@@ -92,19 +92,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client_config =
         quinn::ClientConfig::new(Arc::new(QuicClientConfig::try_from(client_config)?));
 
-    let endpoint = {
-        let bind_addr: SocketAddr = "[::]:23333".parse()?;
+
+    let bind_addr: SocketAddr = "[::]:23333".parse()?;
+
+    let server_addr: SocketAddr = "[::1]:23334".parse()?;
+    send_udp_packet(bind_addr, server_addr).await?;
+
+    println!("established connection");
+        let endpoint = {
         let mut endpoint = Endpoint::client(bind_addr)?;
         endpoint.set_default_client_config(client_config);
         endpoint
     };
-
-    let server_addr: SocketAddr = "[::1]:23334".parse()?;
-    let (tx, rx) = watch::channel(false);
-    send_udp_packet(server_addr, rx).await?;
-    listener(server_addr, tx).await?;
-    println!("established connection");
-    
     let new_conn = endpoint
         .connect(server_addr, "hello.world.example")?
         .await?;

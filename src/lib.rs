@@ -2,36 +2,31 @@ use std::{io, net::SocketAddr, time::Duration};
 
 use tokio::{net::UdpSocket, sync::watch, time};
 
-pub async fn send_udp_packet(addr: SocketAddr, mut rx: watch::Receiver<bool>) -> io::Result<()> {
-    let socket = UdpSocket::bind("[::]:0").await?;
+pub async fn send_udp_packet(from: SocketAddr, to: SocketAddr) -> io::Result<()> {
+    let (tx, mut rx) = watch::channel(false);
+    let socket = UdpSocket::bind(from).await?;
+    let mut buf = [0u8; 1024];
+
     println!("send on: {:?}", socket.local_addr());
-    tokio::spawn(async move {       
-        loop {
-            tokio::select! {
+    loop {
+        tokio::select! {
                 _ = time::sleep(Duration::from_secs(1)) => {
-                     socket.send_to(b"hello", addr).await.unwrap();
+                     socket.send_to(b"hello", to).await.unwrap();
                 }
                 _ = rx.changed() => {
                     break;
                 }
+                n = socket.recv(&mut buf) => {
+                    let n = n?;
+                    let s = String::from_utf8_lossy(&buf[..n]);
+                    if s == "hello" {
+                        socket.send_to(b"ok", to).await?;
+                    } else if s == "ok" {
+                        let _ = tx.send(true);
+                        break;
+                    }
+                }
             }
-        }
-    });
-    Ok(())
-}
-
-pub async fn listener(addr: SocketAddr, tx: watch::Sender<bool>) -> io::Result<()> {
-    let mut buf = [0u8; 1024];
-    let socket = UdpSocket::bind("[::]:0").await?;
-    loop {
-        let n = socket.recv(&mut buf).await?;
-        let s = String::from_utf8_lossy(&buf[..n]);
-        if s == "hello" {
-            socket.send_to(b"ok", addr).await?;
-        } else if s == "ok" {
-            let _ = tx.send(true);
-            break;
-        }
     }
     Ok(())
 }

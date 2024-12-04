@@ -2,27 +2,26 @@ use std::net::SocketAddr;
 
 use quinn::{Endpoint, ServerConfig};
 use rustls::pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer};
-use test_quinn_file_transfer::{listener, send_udp_packet};
-use tokio::{fs::File, io::AsyncReadExt, sync::watch};
+use test_quinn_file_transfer::send_udp_packet;
+use tokio::{fs::File, io::AsyncReadExt};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cert = CertificateDer::from_pem_file("cert.pem")?;
     let key = PrivateKeyDer::from_pem_file("key.pem")?;
     let cert_chain = vec![cert];
-
+    
     let server_config = ServerConfig::with_single_cert(cert_chain, key)?;
-    let bind_addr: SocketAddr = "[::]:23334".parse()?;
-    let endpoint = Endpoint::server(server_config, bind_addr)?;
-    dbg!(&endpoint.local_addr());
+
     let mut message_buf = [0u8; 1024];
+    let bind_addr: SocketAddr = "[::]:23334".parse()?;
 
     let server_addr: SocketAddr = "[::1]:23333".parse()?;
-    let (tx, rx) = watch::channel(false);
-    send_udp_packet(server_addr, rx).await?;
-    listener(server_addr, tx).await?;
+    send_udp_packet(bind_addr, server_addr).await?;
     println!("established connection");
 
+    let endpoint = Endpoint::server(server_config, bind_addr)?;
+    dbg!(&endpoint.local_addr());
     while let Some(income_conn) = endpoint.accept().await {
         match income_conn.await {
             Ok(new_conn) => {
