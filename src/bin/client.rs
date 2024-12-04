@@ -2,7 +2,8 @@ use std::{io, net::SocketAddr, sync::Arc};
 
 use quinn::{crypto::rustls::QuicClientConfig, Endpoint};
 use rustls::client::danger::{ServerCertVerified, ServerCertVerifier};
-use tokio::{fs::File, io::AsyncWriteExt};
+use test_quinn_file_transfer::{listener, send_udp_packet};
+use tokio::{fs::File, io::AsyncWriteExt, sync::watch};
 
 #[derive(Debug)]
 struct TrustOnFirstUseVerifier(Arc<rustls::crypto::CryptoProvider>);
@@ -79,6 +80,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // for cert in rustls_native_certs::load_native_certs().certs {
     //     certs.add(cert)?;
     // }
+
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("Failed to install rustls crypto provider");
@@ -91,14 +93,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         quinn::ClientConfig::new(Arc::new(QuicClientConfig::try_from(client_config)?));
 
     let endpoint = {
-        let bind_addr: SocketAddr = "[::]:0".parse()?;
+        let bind_addr: SocketAddr = "[::]:23333".parse()?;
         let mut endpoint = Endpoint::client(bind_addr)?;
         endpoint.set_default_client_config(client_config);
         endpoint
     };
 
-    let server_addr: SocketAddr = "[::1]:1234".parse()?;
-
+    let server_addr: SocketAddr = "[::1]:23334".parse()?;
+    let (tx, rx) = watch::channel(false);
+    send_udp_packet(server_addr, rx).await?;
+    listener(server_addr, tx).await?;
+    println!("established connection");
+    
     let new_conn = endpoint
         .connect(server_addr, "hello.world.example")?
         .await?;
